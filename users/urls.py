@@ -3,6 +3,7 @@ from django.urls import include, path
 from .views import RegisterView, UserViewSet, MyTokenObtainPairView, LogoutView, RegisterCopropietarioView, RegisterGuardiaView, PerfilUsuarioView
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework import routers
+from .views import RolesListView
 
 router = routers.DefaultRouter()
 router.register(r'users', UserViewSet, basename='users')
@@ -19,4 +20,5 @@ urlpatterns = [
     path('registrarCopropietario', RegisterCopropietarioView.as_view(), name='registrarCopropietario'), #registro de copropietario
     path('registrarGuardia', RegisterGuardiaView.as_view(), name='registrarGuardia'), #registro de guardia
     path('api/v1/', include(router.urls)), #CRUD de los usuarios
+    path('roles/', RolesListView.as_view(), name='roles'),
 ]

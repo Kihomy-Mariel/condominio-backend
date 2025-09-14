@@ -3,30 +3,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-# Esto tenias tu sebas
-# class Rol(models.Model):
-#     name = models.CharField(max_length=20, unique=True)
-
-#     def __str__(self):
-#         return self.name
-    
-# class Usuario(AbstractUser):
-#     email = models.EmailField(unique=True)
-#     ci = models.CharField(max_length=20, unique=True)
-#     phone_number = models.CharField(max_length=20, blank=True)
-#     ESTADO_CHOICES = (
-#         ('activo', 'Activo'),
-#         ('inactivo', 'Inactivo'),
-#     )
-#     estado = models.CharField(max_length=10, choices=ESTADO_CHOICES, default='activo')
-#     rol = models.ForeignKey(Rol, on_delete=models.CASCADE, default=2)
-
-#     # first_name y last_name ya existen en AbstractUser
-
-#     def __str__(self):
-#         return self.username
-    
-
 class Rol(models.Model):
     idRol = models.AutoField(primary_key=True)
     name = models.CharField(max_length=50, unique=True)
@@ -39,9 +15,8 @@ class Rol(models.Model):
         return self.name
 
 class Usuario(AbstractUser):
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=150,blank=True, null=True)
     email = models.EmailField(unique=True)
-    first_name = models.CharField(max_length=150, blank=True, null=True)
     last_name = models.CharField(max_length=150, blank=True, null=True)
     ci = models.CharField(max_length=20, unique=True)
     telefono = models.CharField(max_length=20, null=True, blank=True)
@@ -50,7 +25,7 @@ class Usuario(AbstractUser):
         ('inactivo', 'Inactivo'),
     )
     estado = models.CharField(max_length=10, choices=ESTADO_CHOICES, default='activo')
-    idRol = models.ForeignKey(Rol, on_delete=models.RESTRICT, db_column="idRol", default=1, blank=True, null=True)  # Relación con Rol, puede ser nulo
+    idRol = models.ForeignKey(Rol, on_delete=models.RESTRICT, db_column="idrol", default=1, blank=True, null=True)  # Relación con Rol, puede ser nulo
 
     # first_name y last_name ya existen en AbstractUser
     created_at = models.DateTimeField(auto_now_add=True)
@@ -93,13 +68,8 @@ class GuardiaModel(models.Model):
 
 
 class CopropietarioModel(models.Model):
-    idUsuario = models.OneToOneField(
-        Usuario,
-        on_delete=models.CASCADE,
-        primary_key=True,
-        db_column="id"
-    )
-    unidad = models.CharField(max_length=50, null=True, blank=True)  # Ejemplo: "Apto 101"
+    idUsuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, primary_key=True, db_column="id")
+    unidad = models.ForeignKey('unidad_pertenencia.Unidad', on_delete=models.SET_NULL, null=True, blank=True, related_name='copropietarios')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

@@ -1,7 +1,11 @@
-from django.urls import path
-from . import views
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import ComunicadoViewSet
+
+router = DefaultRouter()
+router.register(r"comunicados", ComunicadoViewSet, basename="comunicados")
 
 urlpatterns = [
-    path('crearComunicado/<int:administrador_id>', views.crearComunicado, name='crearComunicado'),
-    path('mostrarComunicados', views.ListarComunicado, name="mostrarComunicados"),
+    # Rutas del router:
+    path("", include(router.urls)),
 ]

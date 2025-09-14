@@ -1,117 +1,38 @@
+from datetime import datetime, timedelta
 from django.utils import timezone
-from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import api_view,action
+from django.db.models import Q
+from rest_framework import viewsets, permissions, status, filters
+from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
-from datetime import datetime
-from .models import AreaComun, Reserva, AutorizacionVisita
-from .serializers import MarcarEntradaSerializer, MarcarSalidaSerializer,AreaComunSerializer, ReservaSerializer, ListaVisitantesSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 
-# #Crear Lista Invitados
+from .models import AreaComun, Reserva, AutorizacionVisita, RegistroVisitaModel
+from .serializers import (
+    AreaComunSerializer, ReservaSerializer,
+    MarcarEntradaSerializer, MarcarSalidaSerializer,
+    ListaVisitantesSerializer
+)
+from .permissions import AdminOrStaffReadOnly, CopropietarioOrAdmin, IsAdmin
+from users.models import CopropietarioModel, GuardiaModel, PersonaModel
+
+# ---------- helpers envelope ----------
+def ok(message="OK", values=None, code=status.HTTP_200_OK):
+    return Response({"status":1,"error":0,"message":message,"values":values}, status=code)
+
+def fail(message="Error", values=None, code=status.HTTP_400_BAD_REQUEST):
+    return Response({"status":2,"error":1,"message":message,"values":values}, status=code)
 
 
-# @api_view(['POST'])
-# def crearListaInvitados(request):
+# ===================== VISITAS (guardia) =====================
 
-# MOSTRAR VISITAS PARA EL GUARDIA
 @api_view(['GET'])
 def mostrarVisitas(request):
-    visitas = AutorizacionVisita.objects.all()
-    visitas_serializadas = ListaVisitantesSerializer(visitas, many=True).data
-
-    data = []
-    for visita in visitas_serializadas:
-        data.append({
-            "nombre": visita["nombre"],
-            "apellido": visita["apellido"],
-            "CI": visita["ci"],
-            "fecha_inicio": visita["hora_inicio"],
-            "fecha_fin": visita["hora_fin"],
-            "motivo_visita": visita["motivo_visita"],
-            "estado": visita["estado"],
-        })
-
+    visitas = AutorizacionVisita.objects.all().order_by('-hora_inicio')
+    data = ListaVisitantesSerializer(visitas, many=True).data
     return Response({
         "status": 1,
         "error": 0,
         "message": "Visitas listadas correctamente",
-        "data": data
-    })
-# Create your views here.
-@api_view(['GET'])
-def mostrarCalendarioAreasComunes(request):
-    # Obtener fecha del body
-    fecha_str = request.data.get("fecha")
-    if not fecha_str:
-        return Response({
-            "status": 2,
-            "error": 1,
-            "message": "Debe enviar una fecha en formato YYYY-MM-DD",
-        })
-
-    try:
-        fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-    except ValueError:
-        return Response({
-            "status": 2,
-            "error": 1,
-            "message": "Formato de fecha inválido, use YYYY-MM-DD",
-        })
-
-    data = {"disponibles": [], "ocupados": []}
-
-    for area in AreaComun.objects.all():
-        # Obtener horario de apertura/cierre de la zona
-        horario_inicio = timezone.make_aware(datetime.combine(fecha, area.apertura_hora))
-        horario_fin = timezone.make_aware(datetime.combine(fecha, area.cierre_hora))
-
-        # Traer reservas del día
-        reservas = Reserva.objects.filter(
-            area_comun=area,
-            fecha=fecha,
-            estado='confirmada'  # Solo considerar reservas confirmadas
-        ).order_by("hora_inicio")
-
-        ocupados = []
-        libres = []
-        current_time = horario_inicio
-
-        for r in reservas:
-            # Combinar fecha y hora para datetime aware
-            inicio_dt = timezone.make_aware(datetime.combine(r.fecha, r.hora_inicio))
-            fin_dt = timezone.make_aware(datetime.combine(r.fecha, r.hora_fin))
-
-            # Añadir a ocupados
-            ocupados.append({
-                "hora_inicio": inicio_dt.strftime("%H:%M"),
-                "hora_fin": fin_dt.strftime("%H:%M")
-            })
-
-            # Hueco libre antes de esta reserva
-            if inicio_dt > current_time:
-                libres.append({
-                    "hora_inicio": current_time.strftime("%H:%M"),
-                    "hora_fin": inicio_dt.strftime("%H:%M")
-                })
-
-            # Avanzar current_time al final de la reserva
-            if fin_dt > current_time:
-                current_time = fin_dt
-
-        # Último hueco hasta cierre del área
-        if current_time < horario_fin:
-            libres.append({
-                "hora_inicio": current_time.strftime("%H:%M"),
-                "hora_fin": horario_fin.strftime("%H:%M")
-            })
-
-        data["ocupados"].append({"area_comun": area.nombre_area, "horarios": ocupados})
-        data["disponibles"].append({"area_comun": area.nombre_area, "horarios": libres})
-
-    return Response({
-        "status": 1,
-        "error": 0,
-        "message": "Calendario de áreas comunes",
         "data": data
     })
 
@@ -119,146 +40,183 @@ def mostrarCalendarioAreasComunes(request):
 def marcarEntradaVisita(request):
     serializer = MarcarEntradaSerializer(data=request.data)
     if serializer.is_valid():
-        resultado = serializer.save()
-        visitante = resultado['visitante']
-        registro = resultado['registro']
-        return Response({
-            "status": 1,
-            "error": 0,
-            "message": f"Entrada registrada para {visitante.nombre} {visitante.apellido} a las {registro.fecha_entrada}."
-        })
-    return Response({
-        "status": 2,
-        "error": 1,
-        "message": serializer.errors
-    })
-
+        res = serializer.save()
+        visitante = res['visitante']
+        reg = res['registro']
+        return ok(f"Entrada registrada para {visitante.nombre} {visitante.apellido} a las {reg.fecha_entrada}.")
+    return fail("Datos inválidos", serializer.errors)
 
 @api_view(['PATCH'])
 def marcarSalidaVisita(request):
     serializer = MarcarSalidaSerializer(data=request.data)
     if serializer.is_valid():
-        resultado = serializer.save()
-        visitante = resultado['visitante']
-        registro = resultado['registro']
-        return Response({
-            "status": 1,
-            "error": 0,
-            "message": f"Salida registrada para {visitante.nombre} {visitante.apellido} a las {registro.fecha_salida}."
-        })
-    return Response({
-        "status": 2,
-        "error": 1,
-        "message": serializer.errors
-    })
+        res = serializer.save()
+        visitante = res['visitante']
+        reg = res['registro']
+        return ok(f"Salida registrada para {visitante.nombre} {visitante.apellido} a las {reg.fecha_salida}.")
+    return fail("Datos inválidos", serializer.errors)
+
+
+# ===================== AREAS =====================
+
+class AreaComunViewSet(viewsets.ModelViewSet):
+    queryset = AreaComun.objects.all().order_by('nombre_area')
+    serializer_class = AreaComunSerializer
+    permission_classes = [permissions.IsAuthenticated, AdminOrStaffReadOnly]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nombre_area']
+    ordering_fields = ['nombre_area','capacidad']
+
+    def list(self, request, *args, **kwargs):
+        ser = self.get_serializer(self.get_queryset(), many=True)
+        return ok("Áreas listadas correctamente", ser.data)
+
+    def create(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        if ser.is_valid():
+            self.perform_create(ser)
+            return ok("Área creada correctamente", ser.data, code=status.HTTP_201_CREATED)
+        return fail("Datos inválidos para crear el área", ser.errors)
+
+    def update(self, request, *args, **kwargs):
+        ser = self.get_serializer(self.get_object(), data=request.data, partial=False)
+        if ser.is_valid():
+            self.perform_update(ser)
+            return ok("Área actualizada correctamente", ser.data)
+        return fail("Datos inválidos para actualizar el área", ser.errors)
+
+    def partial_update(self, request, *args, **kwargs):
+        ser = self.get_serializer(self.get_object(), data=request.data, partial=True)
+        if ser.is_valid():
+            self.perform_update(ser)
+            return ok("Área actualizada correctamente", ser.data)
+        return fail("Datos inválidos para actualizar el área", ser.errors)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.estado = 'inactivo'
+        instance.save(update_fields=['estado'])
+        return ok(f"Área '{instance.nombre_area}' desactivada")
+
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def disponibilidad(self, request, pk=None):
+        """
+        GET /areacomun/areas/{id}/disponibilidad/?fecha=YYYY-MM-DD
+        Devuelve bloques libres y ocupados para ese día.
+        """
+        area = self.get_object()
+        fecha_str = request.query_params.get('fecha')
+        if not fecha_str:
+            return fail("Debe enviar ?fecha=YYYY-MM-DD")
+        try:
+            fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+        except ValueError:
+            return fail("Formato de fecha inválido, use YYYY-MM-DD")
+
+        if area.estado != 'activo':
+            return fail("El área no está activa")
+
+        if not area.dia_habil(fecha):
+            return ok("Día no habilitado para el área", {"ocupados": [], "libres": []})
+
+        tz = timezone.get_current_timezone()
+        apertura = timezone.make_aware(datetime.combine(fecha, area.apertura_hora), tz)
+        cierre   = timezone.make_aware(datetime.combine(fecha, area.cierre_hora), tz)
+
+        reservas = (Reserva.objects
+                    .filter(area_comun=area, fecha=fecha, estado__in=['pendiente','confirmada'])
+                    .order_by('hora_inicio'))
+
+        ocupados = []
+        libres = []
+
+        current = apertura
+        for r in reservas:
+            ini = timezone.make_aware(datetime.combine(r.fecha, r.hora_inicio), tz)
+            fin = timezone.make_aware(datetime.combine(r.fecha, r.hora_fin), tz)
+
+            # hueco libre antes
+            if ini > current:
+                libres.append({"hora_inicio": current.strftime("%H:%M"), "hora_fin": ini.strftime("%H:%M")})
+            # bloque ocupado
+            ocupados.append({"hora_inicio": ini.strftime("%H:%M"), "hora_fin": fin.strftime("%H:%M")})
+            if fin > current:
+                current = fin
+
+        if current < cierre:
+            libres.append({"hora_inicio": current.strftime("%H:%M"), "hora_fin": cierre.strftime("%H:%M")})
+
+        return ok("Disponibilidad del área", {"area": area.nombre_area, "fecha": fecha_str, "ocupados": ocupados, "libres": libres})
 
 class AreaComunViewSet(viewsets.ModelViewSet):
     queryset = AreaComun.objects.all()
     serializer_class = AreaComunSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
-    def list(self, request, *args, **kwargs):
-        areas = self.get_queryset()
-        serializer = self.get_serializer(areas, many=True)
-        return Response({
-            "Status": 1,
-            "Error": 0,
-            "message": "Áreas listadas correctamente",
-            "data": serializer.data
-        })
-    def destroy(self, request, *args, **kwargs):
-        if not request.user.is_authenticated or request.user.rol_id != 1:
-            return Response({
-                "Status": 0,
-                "Error": 1,
-                "message": "No tienes permisos para eliminar áreas comunes",
-                "data": None
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        instance = self.get_object()
-        instance.activa = False
-        instance.estado = 'inactivo'
-        instance.save()
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy"]:
+            return [IsAdmin()]
+        # list/retrieve: lectura
+        return [permissions.IsAuthenticatedOrReadOnly()]
 
-        return Response({
-            "Status": 1,
-            "Error": 0,
-            "message": f"Área con id {instance.pk} eliminada correctamente",
-            "data": {}
-        }, status=status.HTTP_200_OK)
 
-    def create(self, request, *args, **kwargs):
-        #Validar si es Admin
-        if not request.user.is_authenticated or request.user.rol_id != 1:
-            return Response({
-                "Status": 0,
-                "Error": 1,
-                "message": "No tienes permisos para crear áreas comunes",
-                "data": None
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response({
-            "Status": 1,
-            "Error": 0,
-            "message": "Área creada correctamente",
-            "data": serializer.data
-        }, status=status.HTTP_201_CREATED)
-
+# ===================== RESERVAS =====================
 
 class ReservaViewSet(viewsets.ModelViewSet):
-    queryset = Reserva.objects.all()
+    queryset = Reserva.objects.select_related('area_comun','usuario__idUsuario').all().order_by('-creada_en')
     serializer_class = ReservaSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser] 
+    permission_classes = [permissions.IsAuthenticated, CopropietarioOrAdmin]
+    parser_classes = [MultiPartParser, FormParser]  # por si luego anexas comprobante archivo
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Copropietario: solo sus reservas
+        try:
+            coprop = CopropietarioModel.objects.get(idUsuario=self.request.user)
+            return qs.filter(usuario=coprop)
+        except CopropietarioModel.DoesNotExist:
+            # Admin/Guardia/Empleado ven todo
+            return qs
 
     def list(self, request, *args, **kwargs):
-        reservas = self.get_queryset()
-        serializer = self.get_serializer(reservas, many=True)
-        return Response({
-            "Status": 1,
-            "Error": 0,
-            "message": "Reservas listadas correctamente",
-            "data": serializer.data
-        })
+        ser = self.get_serializer(self.get_queryset(), many=True)
+        return ok("Reservas listadas correctamente", ser.data)
+
+    def create(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        if ser.is_valid():
+            try:
+                self.perform_create(ser)
+                return ok("Reserva creada correctamente", ser.data, code=status.HTTP_201_CREATED)
+            except Exception as e:
+                return fail(str(e))
+        return fail("Datos inválidos para crear la reserva", ser.errors)
 
     def perform_create(self, serializer):
         serializer.save()
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response({
-            "Status": 1,
-            "Error": 0,
-            "message": "Reserva creada correctamente",
-            "data": serializer.data
-        }, status=status.HTTP_201_CREATED)
-
-    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    @action(detail=True, methods=['post'])
     def cancelar(self, request, pk=None):
+        """
+        Copropietario puede cancelar su reserva; Admin puede cancelar cualquiera.
+        """
         reserva = self.get_object()
+
+        # permiso: si es coprop, debe ser suya
+        role = getattr(getattr(request.user, 'idRol', None), 'name', '')
+        if role == 'Copropietario':
+            try:
+                cop = CopropietarioModel.objects.get(idUsuario=request.user)
+            except CopropietarioModel.DoesNotExist:
+                return fail("No eres copropietario")
+            if reserva.usuario_id != cop.id:
+                return fail("No puedes cancelar reservas de otro usuario", code=status.HTTP_403_FORBIDDEN)
+
         if reserva.estado == 'cancelada':
-            return Response({
-                "Status": 2,
-                "Error": 1,
-                "message": "La reserva ya está cancelada",
-                "data": {}
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        motivo = request.data.get('motivo_cancelacion', '')
+            return fail("La reserva ya está cancelada", code=status.HTTP_400_BAD_REQUEST)
+
         reserva.estado = 'cancelada'
         reserva.cancelada_en = timezone.now()
-        reserva.motivo_cancelacion = motivo
-        reserva.save()
+        reserva.save(update_fields=['estado','cancelada_en'])
 
-        serializer = self.get_serializer(reserva)
-        return Response({
-            "Status": 1,
-            "Error": 0,
-            "message": "Reserva cancelada correctamente",
-            "data": serializer.data
-            })
+        ser = self.get_serializer(reserva)
+        return ok("Reserva cancelada correctamente", ser.data)

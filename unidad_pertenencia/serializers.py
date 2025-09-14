@@ -34,7 +34,18 @@ class UnidadSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("El piso no puede ser negativo.")
          return value
 
-    
+    def create(self, validated_data):
+        validated_data['codigo'] = validated_data['codigo'].strip().upper()
+        validated_data['bloque'] = validated_data['bloque'].strip().upper()
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+            if 'codigo' in validated_data and validated_data['codigo']:
+                validated_data['codigo'] = validated_data['codigo'].strip().upper()
+            if 'bloque' in validated_data and validated_data['bloque']:
+                validated_data['bloque'] = validated_data['bloque'].strip().upper()
+            return super().update(instance, validated_data)
+
 class VehiculoSerializer(serializers.ModelSerializer):
     
     class Meta:
@@ -74,6 +85,15 @@ class VehiculoSerializer(serializers.ModelSerializer):
         if value.estado != "activa":
             raise serializers.ValidationError("La unidad debe estar activa.")
         return value 
+    
+    def create(self, validated_data):
+        validated_data['placa'] = validated_data['placa'].strip().upper()
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if 'placa' in validated_data and validated_data['placa']:
+            validated_data['placa'] = validated_data['placa'].strip().upper()
+        return super().update(instance, validated_data)
     
 class MascotaSerializer(serializers.ModelSerializer):
     class Meta:

@@ -43,6 +43,8 @@ INSTALLED_APPS = [
     'comunicacion',
     'gestion_expensas.apps.GestionExpensasConfig',
     'unidad_pertenencia',
+    'corsheaders',
+    'django_filters',
 ]
 
 
@@ -50,12 +52,20 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vite
+]
+# En dev también puedes usar:
+# CORS_ALLOW_ALL_ORIGINS = True
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173"]
 
 ROOT_URLCONF = 'condominio.urls'
 
@@ -83,10 +93,10 @@ WSGI_APPLICATION = 'condominio.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'condominio_grupal',
+        'NAME': 'condominio_db',
         'USER': 'postgres',
-        'PASSWORD': 'CObuchan8',
-        'HOST': 'localhost',
+        'PASSWORD': 'kihomy123',
+        'HOST': '127.0.0.1',
         'PORT': '5432',
 
     }
@@ -99,6 +109,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+        'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ]
 }
 from datetime import timedelta
 SIMPLE_JWT = {
@@ -150,13 +165,3 @@ MEDIA_ROOT = BASE_DIR / "media"
 #pip freeze > requirements.txt PARA GENERAR LISTA DE REQUIRIMIENTOS
 #pip install -r requirements.txt PARA INSTALAR LOS REQUIRIMIENTOS
 
-REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
-    
-        "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
-}
-#pip install -r requirements.txt PARA INSTALAR LOS REQUIRIMIENTOS
